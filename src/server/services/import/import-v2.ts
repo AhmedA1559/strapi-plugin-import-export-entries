@@ -56,12 +56,14 @@ const importDataV2 = async (
     slug: slugArg,
     user,
     idField,
+    alias
   }: {
     slug: SchemaUID;
     /** User importing the data. */
     user: User;
     /** Field used as unique identifier. */
     idField: string;
+    alias: Record<string, string>;
   },
 ) => {
   const { data } = fileContent;
@@ -88,6 +90,7 @@ const importDataV2 = async (
       user,
       // Keep behavior of `idField` of version 1.
       ...(slug === slugArg ? { idField } : {}),
+      alias,
       importStage: 'simpleAttributes',
       fileIdToDbId,
       componentsDataStore,
@@ -170,10 +173,11 @@ const importContentTypeSlug = async (
     slug,
     user,
     idField,
+    alias,
     importStage,
     fileIdToDbId,
     componentsDataStore,
-  }: { slug: SchemaUID; user: User; idField?: string; importStage: ImportStage; fileIdToDbId: IdMapper; componentsDataStore: Partial<Record<SchemaUID, SlugEntries>> },
+  }: { slug: SchemaUID; user: User; idField?: string; alias?: Record<string, string>; importStage: ImportStage; fileIdToDbId: IdMapper; componentsDataStore: Partial<Record<SchemaUID, SlugEntries>> },
 ): Promise<{ failures: ImportFailures[] }> => {
   let fileEntries = toPairs(slugEntries);
 
@@ -198,7 +202,7 @@ const importContentTypeSlug = async (
   const failures: ImportFailures[] = [];
   for (let [fileId, fileEntry] of fileEntries) {
     try {
-      await updateOrCreate(user, slug, fileId, fileEntry, idField, { importStage, fileIdToDbId, componentsDataStore });
+      await updateOrCreate(user, slug, fileId, fileEntry, idField, alias, { importStage, fileIdToDbId, componentsDataStore });
     } catch (err: any) {
       strapi.log.error(err);
       failures.push({ error: err, data: fileEntry });
@@ -216,10 +220,12 @@ const updateOrCreate = async (
   fileId: FileId,
   fileEntryArg: FileEntry,
   idFieldArg: string | undefined,
+  aliasArg: Record<string, string> | undefined,
   { importStage, fileIdToDbId, componentsDataStore }: { importStage: ImportStage; fileIdToDbId: IdMapper; componentsDataStore: Partial<Record<SchemaUID, SlugEntries>> },
 ) => {
   const schema = getModel(slug);
   const idField = idFieldArg || schema?.pluginOptions?.['import-export-entries']?.idField || 'id';
+  const aliasField = aliasArg || schema?.pluginOptions?.['import-export-entries']?.args;
 
   let fileEntry = cloneDeep(fileEntryArg);
 
@@ -227,7 +233,7 @@ const updateOrCreate = async (
     fileEntry = removeComponents(schema, fileEntry);
     fileEntry = linkMediaAttributes(schema, fileEntry, { fileIdToDbId });
     const attributeNames = getModelAttributes(slug, { filterOutType: ['relation'] })
-      .map(({ name }) => name)
+      .map(({ name }) => aliasField ? aliasField[name] || name : name)
       .concat('id', 'localizations', 'locale');
     fileEntry = pick(fileEntry, attributeNames);
   } else if (importStage === 'relationAttributes') {

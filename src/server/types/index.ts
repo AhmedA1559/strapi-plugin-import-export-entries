@@ -91,6 +91,9 @@ type SchemaPluginOptions = {
     };
     'import-export-entries'?: {
       idField?: string;
+      alias?: {
+        [key: string]: string;
+      };
     };
   };
 };

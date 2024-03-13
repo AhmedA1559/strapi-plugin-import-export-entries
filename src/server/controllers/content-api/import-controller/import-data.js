@@ -14,12 +14,13 @@ const bodySchema = Joi.object({
     .valid(...InputFormats)
     .required(),
   idField: Joi.string(),
+  alias: Joi.object().pattern(Joi.string(), Joi.string())
 });
 
 const importData = async (ctx) => {
   const { user } = ctx.state;
 
-  const { slug, data: dataRaw, format, idField } = checkParams(bodySchema, ctx.request.body);
+  const { slug, data: dataRaw, format, idField, alias } = checkParams(bodySchema, ctx.request.body);
 
   const fileContent = await getService('import').parseInputData(format, dataRaw, { slug });
 
@@ -29,6 +30,7 @@ const importData = async (ctx) => {
       slug,
       user,
       idField,
+      alias
     });
   } else {
     res = await getService('import').importData(dataRaw, {
@@ -36,6 +38,7 @@ const importData = async (ctx) => {
       format,
       user,
       idField,
+      alias
     });
   }
 
