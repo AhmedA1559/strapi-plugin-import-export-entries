@@ -3,6 +3,8 @@ import isEmpty from 'lodash/isEmpty';
 import omit from 'lodash/omit';
 import pick from 'lodash/pick';
 import castArray from 'lodash/castArray';
+import mapKeys from 'lodash/mapKeys';
+
 import { extract, toArray } from '../../../libs/arrays';
 import { ObjectBuilder } from '../../../libs/objects';
 import { getModel, getModelAttributes, isComponentAttribute, isDynamicZoneAttribute, isMediaAttribute, isRelationAttribute } from '../../utils/models';
@@ -225,7 +227,7 @@ const updateOrCreate = async (
 ) => {
   const schema = getModel(slug);
   const idField = idFieldArg || schema?.pluginOptions?.['import-export-entries']?.idField || 'id';
-  const aliasField = aliasArg || schema?.pluginOptions?.['import-export-entries']?.args;
+  const aliasField = aliasArg || schema?.pluginOptions?.['import-export-entries']?.alias;
 
   let fileEntry = cloneDeep(fileEntryArg);
 
@@ -235,6 +237,12 @@ const updateOrCreate = async (
     const attributeNames = getModelAttributes(slug, { filterOutType: ['relation'] })
       .map(({ name }) => aliasField ? aliasField[name] || name : name)
       .concat('id', 'localizations', 'locale');
+
+    // Convert attribute names in fileEntry to alias if provided.
+    if (aliasField) {
+      fileEntry = mapKeys(fileEntry, (_, key: string) => aliasField[key] || key);
+    }
+
     fileEntry = pick(fileEntry, attributeNames);
   } else if (importStage === 'relationAttributes') {
     fileEntry = setComponents(schema, fileEntry, { fileIdToDbId, componentsDataStore });
