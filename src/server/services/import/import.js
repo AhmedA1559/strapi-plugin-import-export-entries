@@ -25,7 +25,7 @@ const { parseInputData } = require('./parsers');
  * @param {Object} options.idField - Field used as unique identifier.
  * @returns {Promise<ImportDataRes>}
  */
-const importData = async (dataRaw, { slug, format, user, idField }) => {
+const importData = async (dataRaw, { slug, format, user, idField, alias }) => {
   let data = await parseInputData(format, dataRaw, { slug });
   data = toArray(data);
 
@@ -33,7 +33,7 @@ const importData = async (dataRaw, { slug, format, user, idField }) => {
   if (slug === CustomSlugs.MEDIA) {
     res = await importMedia(data, { user });
   } else {
-    res = await importOtherSlug(data, { slug, user, idField });
+    res = await importOtherSlug(data, { slug, user, idField, alias });
   }
 
   return res;
@@ -60,12 +60,12 @@ const importMedia = async (fileData, { user }) => {
   };
 };
 
-const importOtherSlug = async (data, { slug, user, idField }) => {
+const importOtherSlug = async (data, { slug, user, idField, alias }) => {
   const processed = [];
   for (let datum of data) {
     let res;
     try {
-      await updateOrCreate(user, slug, datum, idField);
+      await updateOrCreate(user, slug, datum, idField, alias);
       res = { success: true };
     } catch (err) {
       strapi.log.error(err);
@@ -89,18 +89,34 @@ const importOtherSlug = async (data, { slug, user, idField }) => {
  * @param {string} idField - Field used as unique identifier.
  * @returns Updated/created entry.
  */
-const updateOrCreate = async (user, slug, data, idField = 'id') => {
+const updateOrCreate = async (user, slug, data, idField = 'id', alias = {}) => {
   const relationAttributes = getModelAttributes(slug, { filterType: ['component', 'dynamiczone', 'media', 'relation'] });
   for (let attribute of relationAttributes) {
-    data[attribute.name] = await updateOrCreateRelation(user, attribute, data[attribute.name]);
+    // If the attribute name is an alias, replace it with the original name.
+    data[attribute.name] = await updateOrCreateRelation(user, attribute, data[attribute.name], alias);
   }
 
   let entry;
   const model = getModel(slug);
+  const aliasArg = model?.pluginOptions?.['import-export-entries']?.alias;
+  if (aliasArg) {
+    alias = aliasArg;
+  }
+  // Iterate over each of the keys in data
+  for (let key in data) {
+    strapi.log.error(key);
+    strapi.log.error(data[key]);
+    const aliasName = alias[key];
+    strapi.log.error(aliasName);
+    if (aliasName) {
+      data[aliasName] = data[key];
+      delete data[key];
+    }
+  }
   if (model.kind === 'singleType') {
-    entry = await updateOrCreateSingleType(user, slug, data, idField);
+    entry = await updateOrCreateSingleType(user, slug, data, idField, alias);
   } else {
-    entry = await updateOrCreateCollectionType(user, slug, data, idField);
+    entry = await updateOrCreateCollectionType(user, slug, data, idField, alias);
   }
   return entry;
 };
@@ -150,7 +166,7 @@ const updateOrCreateSingleType = async (user, slug, data, idField) => {
  * @param {Attribute} rel
  * @param {number | Object | Array<Object>} relData
  */
-const updateOrCreateRelation = async (user, rel, relData) => {
+const updateOrCreateRelation = async (user, rel, relData, alias) => {
   if (relData == null) {
     return null;
   }
@@ -160,7 +176,7 @@ const updateOrCreateRelation = async (user, rel, relData) => {
   } else if (rel.type === 'dynamiczone') {
     const components = [];
     for (const componentDatum of relData || []) {
-      let component = await updateOrCreate(user, componentDatum.__component, componentDatum);
+      let component = await updateOrCreate(user, componentDatum.__component, componentDatum, alias);
       component = { ...component, __component: componentDatum.__component };
       components.push(component);
     }
@@ -173,7 +189,7 @@ const updateOrCreateRelation = async (user, rel, relData) => {
       if (typeof relDatum === 'number') {
         entryIds.push(relDatum);
       } else if (isObjectSafe(relDatum)) {
-        const entry = await updateOrCreate(user, rel.component, relDatum);
+        const entry = await updateOrCreate(user, rel.component, relDatum, alias);
         if (entry?.id) {
           entryIds.push(entry.id);
         }
@@ -199,7 +215,7 @@ const updateOrCreateRelation = async (user, rel, relData) => {
       if (typeof relDatum === 'number') {
         entryIds.push(relDatum);
       } else if (isObjectSafe(relDatum)) {
-        const entry = await updateOrCreate(user, rel.target, relDatum);
+        const entry = await updateOrCreate(user, rel.target, relDatum, alias);
         if (entry?.id) {
           entryIds.push(entry.id);
         }

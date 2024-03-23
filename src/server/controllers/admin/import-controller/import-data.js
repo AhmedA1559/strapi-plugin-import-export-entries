@@ -11,8 +11,8 @@ async function importData(ctx) {
   }
 
   const { user } = ctx.state;
-  const { slug, data: dataRaw, format, idField } = ctx.request.body;
-
+  const { slug, data: dataRaw, format, idField, alias } = ctx.request.body;
+  
   const fileContent = await getService('import').parseInputData(format, dataRaw, { slug });
 
   let res;
@@ -21,6 +21,7 @@ async function importData(ctx) {
       slug,
       user,
       idField,
+      alias
     });
   } else {
     res = await getService('import').importData(dataRaw, {
@@ -28,6 +29,7 @@ async function importData(ctx) {
       format,
       user,
       idField,
+      alias
     });
   }
 
