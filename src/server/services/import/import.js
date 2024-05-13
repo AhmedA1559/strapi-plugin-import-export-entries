@@ -96,6 +96,18 @@ const updateOrCreate = async (user, slug, data, idField = 'id', alias = {}) => {
     data[attribute.name] = await updateOrCreateRelation(user, attribute, data[attribute.name], alias);
   }
 
+  for (let key in data) {
+    if (key.includes('Category')) {
+      const entry = await strapi.db.query('api::category.category').findOne({
+        select: ['name', 'id'],
+        where: { name: data[key] },
+      });
+      if (entry) {
+        data[key] = entry.id;
+      }
+    }
+  }
+
   let entry;
   const model = getModel(slug);
   const aliasArg = model?.pluginOptions?.['import-export-entries']?.alias;
@@ -104,20 +116,52 @@ const updateOrCreate = async (user, slug, data, idField = 'id', alias = {}) => {
   }
   // Iterate over each of the keys in data
   for (let key in data) {
-    strapi.log.error(key);
-    strapi.log.error(data[key]);
     const aliasName = alias[key];
-    strapi.log.error(aliasName);
     if (aliasName) {
-      data[aliasName] = data[key];
+      // If aliasName already exists in data, then we want to concatenate the values
+      // as an array
+      if (data[aliasName]) {
+        if (!Array.isArray(data[aliasName])) {
+          data[aliasName] = [data[aliasName], data[key]];
+        } else {
+          data[aliasName].push(data[key]);
+        }
+      } else {
+        data[aliasName] = data[key];
+      }
       delete data[key];
     }
   }
+
   if (model.kind === 'singleType') {
     entry = await updateOrCreateSingleType(user, slug, data, idField, alias);
   } else {
     entry = await updateOrCreateCollectionType(user, slug, data, idField, alias);
   }
+
+  // Go over emails and send out registration to them
+  if (entry && entry.email) {
+    const email = entry.email;
+
+    // Get role id
+    const role = await strapi.db.query("admin::role").findOne({
+      select: ['name', 'id'],
+      where: { name: 'Vendor' },
+    });
+    
+    if (role) {
+      // Create user with service
+      const user = await strapi.service("admin::user").create(
+        {
+          firstname: entry.name ?? email,
+          email: email,
+          roles: [role.id],
+        }
+      )
+
+    }
+  }
+
   return entry;
 };
 
